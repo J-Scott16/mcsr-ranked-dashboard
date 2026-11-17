@@ -1,5 +1,6 @@
-import app from './app';
-import { initDb } from './db';
+import app from '../../api/app';
+import { initDb } from '../../api/db';
+
 
 async function start() {
   await initDb();
