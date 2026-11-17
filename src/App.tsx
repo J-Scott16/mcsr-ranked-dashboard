@@ -174,28 +174,6 @@ function groupStats(
 }
 
 
-async function fetchAllMatches(name: string): Promise<Match[]> {
-  const all: Match[] = [];
-  let before: number | null = null;
-  let pages = 0;
-  while (pages < 10) {
-    const url =
-      before === null
-        ? `https://api.mcsrranked.com/users/${name}/matches?type=2&count=100`
-        : `https://api.mcsrranked.com/users/${name}/matches?type=2&count=100&before=${before}`;
-    const res = await fetch(url);
-    const json = await res.json();
-    if (json.status !== "success") break;
-    const page: Match[] = json.data;
-    console.log(`page ${pages + 1}: got ${page.length} matches`);
-    all.push(...page);
-    pages += 1;
-    if (page.length < 100) break;
-    before = page[page.length - 1].id;
-  }
-  return all;
-}
-
 async function fetchMatchSplits(matchId: number, playerUuid: string, opponentUuid: string): Promise<MatchSplits> {
   const res = await fetch(`/api/matches/${matchId}`);
   const json = await res.json();
