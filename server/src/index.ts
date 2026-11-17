@@ -1,0 +1,11 @@
+import app from './app';
+import { initDb } from './db';
+
+async function start() {
+  await initDb();
+  app.listen(3001, () => {
+    console.log('Server running on http://localhost:3001');
+  });
+}
+
+start();

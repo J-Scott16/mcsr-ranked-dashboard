@@ -197,7 +197,7 @@ async function fetchAllMatches(name: string): Promise<Match[]> {
 }
 
 async function fetchMatchSplits(matchId: number, playerUuid: string, opponentUuid: string): Promise<MatchSplits> {
-  const res = await fetch(`https://api.mcsrranked.com/matches/${matchId}`);
+  const res = await fetch(`/api/matches/${matchId}`);
   const json = await res.json();
   const timelines = (json.data.timelines ?? []) as { uuid: string; time: number; type: string }[];
   const mine = timelines.filter((t) => t.uuid === playerUuid);
@@ -275,30 +275,43 @@ type LeaderboardPlayer = {
 };
 
 async function fetchLeaderboard(): Promise<LeaderboardPlayer[]> {
-  const res = await fetch("https://api.mcsrranked.com/leaderboard");
+  const res = await fetch('/api/leaderboard');
   const json = await res.json();
-  if (json.status !== "success") return [];
-  return (json.data.users as LeaderboardPlayer[]).slice(0, 20);
+  return (json.users as LeaderboardPlayer[]).slice(0, 20);
 }
+
 
 
 
 async function fetchAllMatchSplits(matches: Match[], playerUuid: string): Promise<AllSplits> {
   const splits: AllSplits = {
-    buried_Treasure: { totalMs: 0, count: 0, diffs: []},
-    desert_Temple: { totalMs: 0, count: 0, diffs: []},
-    village: { totalMs: 0, count: 0, diffs: []},
-    ruined_Portal: { totalMs: 0, count: 0, diffs: []},
-    shipwreck: { totalMs: 0, count: 0, diffs: []},
-    housing: { totalMs: 0, count: 0, diffs: []},
-    treasure: { totalMs: 0, count: 0, diffs: []},
-    stables: { totalMs: 0, count: 0, diffs: []},
-    bridge: { totalMs: 0, count: 0, diffs: []},
+    buried_Treasure: { totalMs: 0, count: 0, diffs: [] },
+    desert_Temple: { totalMs: 0, count: 0, diffs: [] },
+    village: { totalMs: 0, count: 0, diffs: [] },
+    ruined_Portal: { totalMs: 0, count: 0, diffs: [] },
+    shipwreck: { totalMs: 0, count: 0, diffs: [] },
+    housing: { totalMs: 0, count: 0, diffs: [] },
+    treasure: { totalMs: 0, count: 0, diffs: [] },
+    stables: { totalMs: 0, count: 0, diffs: [] },
+    bridge: { totalMs: 0, count: 0, diffs: [] },
   };
 
-  for (const match of matches.slice(0, 100)) {
-    const opponent = match.players.find((p) => p.uuid !== playerUuid);
-    const matchSplit = await fetchMatchSplits(match.id, playerUuid, opponent?.uuid ?? "");
+  const slice = matches.slice(0, 100);
+
+  // Fetch all 100 match details in parallel instead of one at a time.
+  // Promise.all keeps the results in the same order as the matches.
+  const allSplits = await Promise.all(
+    slice.map((match) => {
+      const opponent = match.players.find((p) => p.uuid !== playerUuid);
+      return fetchMatchSplits(match.id, playerUuid, opponent?.uuid ?? "");
+    })
+  );
+
+  // Add them up. No fetching here, so this part is instant.
+  for (let i = 0; i < slice.length; i++) {
+    const match = slice[i];
+    const matchSplit = allSplits[i];
+
     if (matchSplit.myOverworldMs !== null && match.seedType) {
       const key = seedKeyMap[match.seedType];
       if (key) {
@@ -323,8 +336,10 @@ async function fetchAllMatchSplits(matches: Match[], playerUuid: string): Promis
       }
     }
   }
+
   return splits;
 }
+
 
 
 
@@ -383,31 +398,32 @@ const gradientStops = eloHistory.length > 0 ? eloGradientStops(dataMin, dataMax)
 
 
 
-  function loadPlayer(name: string) {
-  setPlayer(null);
-  setError(null);
+  async function loadPlayer(username: string) {
+  const name = username.trim();
+  if (!name) return;
+
   setLoading(true);
+  setError(null);
+  setPlayer(null);
   setMatches([]);
   setSplits(null);
 
-  fetch(`https://api.mcsrranked.com/users/${name}`)
-    .then((res) => res.json())
-    .then((json) => {
-      if (json.status === "success") {
-        setPlayer(json.data);
-      } else {
-        setError(JSON.stringify(json.data));
-      }
-    })
-    .catch((e) => setError(String(e)))
-    .finally(() => setLoading(false));
-
-  fetchAllMatches(name)
-  .then((all) => setMatches(all.filter((m) => !m.decayed)))
-  .catch(() => {});
-
-
+  try {
+    const res = await fetch(`/api/player/${encodeURIComponent(name)}`);
+    if (!res.ok) {
+      setError('Player not found');
+      return;
+    }
+    const data = await res.json();
+    setPlayer(data.player);
+    setMatches(data.matches);
+  } catch {
+    setError('Failed to load player');
+  } finally {
+    setLoading(false);
   }
+}
+
 
 return (
   <div className="container">
