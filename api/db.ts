@@ -11,6 +11,7 @@ const client = createClient({
 });
 
 
+
 export async function initDb() {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS players (
