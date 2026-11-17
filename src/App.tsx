@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import "./App.css";
 
 
@@ -30,6 +30,15 @@ type TypeStats = {
   finished: number;
 };
 
+type MatchSplits = {
+  matchId: number;
+  myOverworldMs: number | null;
+  myBastionMs: number | null;
+  oppOverworldMs: number | null;
+  oppBastionMs: number | null;
+};
+
+
 
 function formatTime(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -46,6 +55,19 @@ function formatSeedType(seedType: string | null | undefined): string {
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 }
+
+function formatDiff(ms: number): string {
+  const sign = ms >= 0 ? "+" : "-";
+  return `${sign}${(Math.abs(ms) / 1000).toFixed(1)}s`;
+}
+
+function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
 
 
 function groupStats(
@@ -95,6 +117,120 @@ async function fetchAllMatches(name: string): Promise<Match[]> {
   return all;
 }
 
+async function fetchMatchSplits(matchId: number, playerUuid: string, opponentUuid: string): Promise<MatchSplits> {
+  const res = await fetch(`https://api.mcsrranked.com/matches/${matchId}`);
+  const json = await res.json();
+  const timelines = (json.data.timelines ?? []) as { uuid: string; time: number; type: string }[];
+  const mine = timelines.filter((t) => t.uuid === playerUuid);
+  const theirs = timelines.filter((t) => t.uuid === opponentUuid);
+  const myEnterNether = mine.find((t) => t.type === "story.enter_the_nether")?.time ?? null;
+  const oppEnterNether = theirs.find((t) => t.type === "story.enter_the_nether")?.time ?? null;
+  const myFindBastion = mine.find((t) => t.type === "nether.find_bastion")?.time ?? null;
+  const myFindFortress = mine.find((t) => t.type === "nether.find_fortress")?.time ?? null;
+  const oppFindBastion = theirs.find((t) => t.type === "nether.find_bastion")?.time ?? null;
+  const oppFindFortress = theirs.find((t) => t.type === "nether.find_fortress")?.time ?? null;
+  return {
+    matchId,
+    myOverworldMs: myEnterNether,
+    myBastionMs: myFindBastion !== null && myFindFortress !== null ? myFindFortress - myFindBastion : null,
+    oppOverworldMs: oppEnterNether,
+    oppBastionMs: oppFindBastion !== null && oppFindFortress !== null ? oppFindFortress - oppFindBastion : null,
+  };
+}
+
+type SplitTotal = { totalMs: number; count: number; diffs: number[] };
+
+
+
+const overworldKeys = ["buried_Treasure", "desert_Temple", "village", "ruined_Portal", "shipwreck"] as const;
+const bastionKeys = ["housing", "treasure", "stables", "bridge"] as const;
+
+
+type AllSplits = {
+  buried_Treasure: SplitTotal;
+  desert_Temple: SplitTotal;
+  village: SplitTotal;
+  ruined_Portal: SplitTotal;
+  shipwreck: SplitTotal;
+  housing: SplitTotal;
+  treasure: SplitTotal;
+  stables: SplitTotal;
+  bridge: SplitTotal;
+};
+
+const seedKeyMap: Record<string, keyof AllSplits> = {
+  BURIED_TREASURE: "buried_Treasure",
+  DESERT_TEMPLE: "desert_Temple",
+  VILLAGE: "village",
+  RUINED_PORTAL: "ruined_Portal",
+  SHIPWRECK: "shipwreck",
+};
+const bastionKeyMap: Record<string, keyof AllSplits> = {
+  HOUSING: "housing",
+  TREASURE: "treasure",
+  STABLES: "stables",
+  BRIDGE: "bridge",
+};
+
+type LeaderboardPlayer = {
+  uuid: string;
+  nickname: string;
+  eloRate: number | null;
+  eloRank: number | null;
+};
+
+async function fetchLeaderboard(): Promise<LeaderboardPlayer[]> {
+  const res = await fetch("https://api.mcsrranked.com/leaderboard");
+  const json = await res.json();
+  if (json.status !== "success") return [];
+  return (json.data.users as LeaderboardPlayer[]).slice(0, 20);
+}
+
+
+
+async function fetchAllMatchSplits(matches: Match[], playerUuid: string): Promise<AllSplits> {
+  const splits: AllSplits = {
+    buried_Treasure: { totalMs: 0, count: 0, diffs: []},
+    desert_Temple: { totalMs: 0, count: 0, diffs: []},
+    village: { totalMs: 0, count: 0, diffs: []},
+    ruined_Portal: { totalMs: 0, count: 0, diffs: []},
+    shipwreck: { totalMs: 0, count: 0, diffs: []},
+    housing: { totalMs: 0, count: 0, diffs: []},
+    treasure: { totalMs: 0, count: 0, diffs: []},
+    stables: { totalMs: 0, count: 0, diffs: []},
+    bridge: { totalMs: 0, count: 0, diffs: []},
+  };
+
+  for (const match of matches.slice(0, 100)) {
+    const opponent = match.players.find((p) => p.uuid !== playerUuid);
+    const matchSplit = await fetchMatchSplits(match.id, playerUuid, opponent?.uuid ?? "");
+    if (matchSplit.myOverworldMs !== null && match.seedType) {
+      const key = seedKeyMap[match.seedType];
+      if (key) {
+        const bucket = splits[key];
+        bucket.totalMs += matchSplit.myOverworldMs;
+        bucket.count += 1;
+        if (matchSplit.oppOverworldMs !== null) {
+          bucket.diffs.push(matchSplit.myOverworldMs - matchSplit.oppOverworldMs);
+        }
+      }
+    }
+
+    if (matchSplit.myBastionMs !== null && match.bastionType) {
+      const key = bastionKeyMap[match.bastionType];
+      if (key) {
+        const bucket = splits[key];
+        bucket.totalMs += matchSplit.myBastionMs;
+        bucket.count += 1;
+        if (matchSplit.oppBastionMs !== null) {
+          bucket.diffs.push(matchSplit.myBastionMs - matchSplit.oppBastionMs);
+        }
+      }
+    }
+  }
+  return splits;
+}
+
 
 
 
@@ -105,23 +241,50 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const STEVE_HEAD = "https://minotar.net/avatar/MHF_Steve/100.png";
   const [matches, setMatches] = useState<Match[]>([]);
+  const [splits, setSplits] = useState<AllSplits | null>(null);
 
-    const seedStats = player
+  useEffect(() => {
+    if (!player || matches.length === 0) return;
+    fetchAllMatchSplits(matches, player.uuid).then(setSplits);
+  }, [player, matches]);
+
+  const [leaderboard, setLeaderboard] = useState<LeaderboardPlayer[]>([]);
+
+ useEffect(() => {
+  fetchLeaderboard().then(setLeaderboard).catch((e) => console.error(e));
+}, []);
+
+
+
+  const seedStats = player
     ? groupStats(matches, player.uuid, (m) =>
         m.seedType ? formatSeedType(m.seedType) : "Unknown"
       )
     : {};
+
+  const wins = player ? matches.filter((m) => m.result?.uuid === player.uuid).length : 0;
+  const decisive = matches.filter((m) => m.result?.uuid).length;
+  const forfeits = player
+    ? matches.filter((m) => m.forfeited && m.result?.uuid && m.result.uuid !== player.uuid).length
+    : 0;
+  const winRate = decisive > 0 ? Math.round((wins / decisive) * 100) : 0;
+  const forfeitRate = matches.length > 0 ? Math.round((forfeits / matches.length) * 100) : 0;
+
   const bastionStats = player
     ? groupStats(matches, player.uuid, (m) =>
         m.bastionType ? formatSeedType(m.bastionType) : "Unknown"
       )
     : {};
+    
+
 
   function loadPlayer(name: string) {
   setPlayer(null);
   setError(null);
   setLoading(true);
   setMatches([]);
+  setSplits(null);
+
   fetch(`https://api.mcsrranked.com/users/${name}`)
     .then((res) => res.json())
     .then((json) => {
@@ -141,11 +304,30 @@ export default function App() {
 
   }
 
-
-
 return (
   <div className="container">
-    <form
+
+    <div className="page-layout">
+      <div className="leaderboard">
+        <h3>Leaderboard</h3>
+        {leaderboard.length === 0 && <p>Loading...</p>}
+        {leaderboard.map((p) => (
+          <button
+            key={p.uuid}
+            className="leaderboard-row"
+            onClick={() => {
+              if (inputRef.current) inputRef.current.value = p.nickname;
+              loadPlayer(p.nickname);
+            }}
+          >
+            <span>#{p.eloRank} {p.nickname}</span>
+            <span>{p.eloRate}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="main-content">
+        <form
       className="search-row"
       onSubmit={(e) => {
         e.preventDefault();
@@ -156,96 +338,148 @@ return (
       <input ref={inputRef} placeholder="Search a player" />
       <button type="submit">Search</button>
     </form>
-
-    {error && <p>{error}</p>}
-    {loading && <p>Loading...</p>}
-
-    {player && (
-      <div className="card">
-        <div className="player-head">
-          <img
-            className="player-head-img"
-            src={`https://minotar.net/avatar/${player.uuid}/100.png`}
-            alt={`${player.nickname}'s head`}
-            onError={(e) => {
-              e.currentTarget.onerror = null;
-              e.currentTarget.src = STEVE_HEAD;
-            }}
-          />
-          <img
-            className="player-head-img"
-            src={`https://minotar.net/helm/${player.uuid}/100.png`}
-            alt=""
-            onError={(e) => {
-              e.currentTarget.style.display = "none";
-            }}
-          />
-        </div>
-
-        <div className="stats">
-          <div className="stat">
-            <span className="stat-label">Elo</span>
-            <span className="stat-value">{player.eloRate}</span>
-          </div>
-          <div className="stat">
-            <span className="stat-label">Rank</span>
-            <span className="stat-value">#{player.eloRank}</span>
-          </div>
-        </div>
-
-        <div className="content-row">
-          <div className="type-panel">
-            <h3>Seed Types</h3>
-            {Object.entries(seedStats).map(([name, s]) => (
-              <div key={name} className="type-row">
-                <span>{name}</span>
-                <span>
-                  {s.wins}/{s.played} · {Math.round((s.wins / s.played) * 100)}% · avg{" "}
-                  {s.finished > 0 ? formatTime(s.totalTime / s.finished) : "—"}
-                </span>
-              </div>
-            ))}
+        {error && <p>{error}</p>}
+        {loading && <p>Loading...</p>}
+        {player && (
+          <div className="card">
+            <h2 className="player-name">{player.nickname}</h2>
+          <div className="player-head-row">
+            <div className="head-stat">
+              <span className="stat-label">Win Rate</span>
+              <span className="stat-value">{winRate}%</span>
+              <span className="stat-sub">{wins}/{decisive}</span>
+            </div>
+            <div className="player-head">
+              <img
+                className="player-head-img"
+                src={`https://minotar.net/avatar/${player.uuid}/100.png`}
+                alt={`${player.nickname}'s head`}
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = STEVE_HEAD;
+                }}
+              />
+              <img
+                className="player-head-img"
+                src={`https://minotar.net/helm/${player.uuid}/100.png`}
+                alt=""
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            </div>
+            <div className="head-stat">
+              <span className="stat-label">Forfeit Rate</span>
+              <span className="stat-value">{forfeitRate}%</span>
+              <span className="stat-sub">{forfeits}/{matches.length}</span>
+            </div>
           </div>
 
-          <div className="matches">
-            {matches.slice(0, 20).map((match) => {
-              const opponent = match.players.find(
-                (p) => p.uuid !== player.uuid
-              );
-              const won = match.result?.uuid === player.uuid;
-              const timeLabel = match.forfeited
-                ? "Forfeit"
-                : match.result?.uuid
-                  ? formatTime(match.result.time)
-                  : "Draw";
-              return (
-                <div key={match.id} className="match-row">
-                  <span className={won ? "win" : "loss"}>
-                    {won ? "Win" : "Loss"}
+          <div className="stats">
+            <div className="stat">
+              <span className="stat-label">Elo</span>
+              <span className="stat-value">{player.eloRate}</span>
+            </div>
+            <div className="stat">
+              <span className="stat-label">Rank</span>
+              <span className="stat-value">#{player.eloRank}</span>
+            </div>
+          </div>
+
+                    <div className="content-row">
+            <div className="type-panel">
+              <h3>Seed Types</h3>
+              {Object.entries(seedStats).map(([name, s]) => (
+                <div key={name} className="type-row">
+                  <span>{name}</span>
+                  <span>
+                    {s.wins}/{s.played} · {Math.round((s.wins / s.played) * 100)}% · avg{" "}
+                    {s.finished > 0 ? formatTime(s.totalTime / s.finished) : "—"}
                   </span>
-                  <span>vs {opponent?.nickname}</span>
-                  <span>{formatSeedType(match.seedType)}</span>
-                  <span className="match-time">{timeLabel}</span>
                 </div>
-              );
-            })}
-          </div>
+              ))}
+              {splits && (
+                <div className="split-block">
+                  <h3>Overworld Splits</h3>
+                  {overworldKeys.map((key) => {
+                    const s = splits[key];
+                    const medDiff = median(s.diffs);
+                    return (
+                      <div key={key} className="type-row">
+                        <span>{formatSeedType(key)}</span>
+                        <span>
+                          <span className="split-time">{s.count > 0 ? formatTime(s.totalMs / s.count) : "—"}</span>
+                          {medDiff !== null && (
+                            <span className={`split-diff ${medDiff <= 0 ? "win" : "loss"}`}>{formatDiff(medDiff)}</span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
 
-          <div className="type-panel">
-            <h3>Bastion Types</h3>
-            {Object.entries(bastionStats).map(([name, s]) => (
-              <div key={name} className="type-row">
-                <span>{name}</span>
-                <span>
-                  {s.wins}/{s.played} · {Math.round((s.wins / s.played) * 100)}%
-                </span>
-              </div>
-            ))}
+            <div className="matches">
+              {matches.slice(0, 20).map((match) => {
+                const opponent = match.players.find(
+                  (p) => p.uuid !== player.uuid
+                );
+                const won = match.result?.uuid === player.uuid;
+                const timeLabel = match.forfeited
+                  ? "Forfeit"
+                  : match.result?.uuid
+                    ? formatTime(match.result.time)
+                    : "Draw";
+                return (
+                  <div key={match.id} className="match-row">
+                    <span className={won ? "win" : "loss"}>
+                      {won ? "Win" : "Loss"}
+                    </span>
+                    <span className="match-opponent">vs {opponent?.nickname}</span>
+                    <span>{formatSeedType(match.seedType)}</span>
+                    <span className="match-time">{timeLabel}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="type-panel">
+              <h3>Bastion Types</h3>
+              {Object.entries(bastionStats).map(([name, s]) => (
+                <div key={name} className="type-row">
+                  <span>{name}</span>
+                  <span>
+                    {s.wins}/{s.played} · {Math.round((s.wins / s.played) * 100)}%
+                  </span>
+                </div>
+              ))}
+              {splits && (
+                <div className="split-block">
+                  <h3>Bastion Splits</h3>
+                  {bastionKeys.map((key) => {
+                    const s = splits[key];
+                    const medDiff = median(s.diffs);
+                    return (
+                      <div key={key} className="type-row">
+                        <span>{formatSeedType(key)}</span>
+                        <span>
+                          <span className="split-time">{s.count > 0 ? formatTime(s.totalMs / s.count) : "—"}</span>
+                          {medDiff !== null && (
+                            <span className={`split-diff ${medDiff <= 0 ? "win" : "loss"}`}>{formatDiff(medDiff)}</span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    )}
+      )}
+    </div>
   </div>
-);
-
+</div>
+  );
 }

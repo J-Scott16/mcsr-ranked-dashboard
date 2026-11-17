@@ -1,22 +1,77 @@
-body { /* default styles for the app */
+body {
   background: #0f1117;
   color: #e8e8e8;
   font-family: system-ui, sans-serif;
   margin: 0;
 }
 
-.container {   /* Container */
-  max-width: 1300px;
+html {
+  background: #0f1117;
+}
+
+.container {
+  max-width: 1800px;
   margin: 40px auto;
   padding: 24px;
 }
 
+.page-layout {
+  display: flex;
+  gap: 200px;
+  align-items: flex-start;
+}
+
+.leaderboard {
+  flex: 0 0 320px;
+  margin-left: 32px;
+  margin-top: 32px;
+  background: #1a1d27;
+  border: 1px solid #2a2e3a;
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.leaderboard-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: #e8e8e8;
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.leaderboard-row:hover {
+  background: #2a2e3a;
+}
+
+.main-content {
+  flex: 1;
+  min-width: 0;
+}
 
 .search-row {
   display: flex;
   gap: 8px;
+  margin-bottom: 16px;
 }
 
+.search-row input {
+  flex: 1;
+  padding: 14px 16px;
+  font-size: 16px;
+}
+
+.search-row button {
+  padding: 14px 20px;
+  font-size: 16px;
+}
 
 input {
   flex: 1;
@@ -25,6 +80,11 @@ input {
   border: 1px solid #333;
   background: #1a1d27;
   color: #e8e8e8;
+}
+
+input:focus {
+  outline: none;
+  border-color: #4f7cff;
 }
 
 button {
@@ -36,13 +96,42 @@ button {
   cursor: pointer;
 }
 
+button:hover {
+  background: #3d68e0;
+}
+
 .card {
   background: #1a1d27;
   border-radius: 12px;
-  padding: 24px;
+  padding: 32px 24px 24px 24px;
   margin-top: 16px;
   border: 1px solid #2a2e3a;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.player-name {
+  text-align: center;
+  margin: 0 0 16px 0;
+  font-size: 28px;
+}
+
+.player-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.head-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stat-sub {
+  font-size: 14px;
+  color: #8a8fa3;
+  margin-top: 4px;
 }
 
 .player-head {
@@ -62,11 +151,6 @@ button {
   image-rendering: pixelated;
 }
 
-.stats {
-  display: flex;
-  gap: 16px;
-  margin-top: 16px;
-}
 
 .stat {
   flex: 1;
@@ -91,67 +175,14 @@ button {
   color: #4f7cff;
 }
 
-button:hover {
-  background: #3d68e0;
-}
-
-input:focus {
-  outline: none;
-  border-color: #4f7cff;
-}
-
-.matches {
+.content-row {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 16px;
-}
-
-.match-row {
-  display: grid;
-  grid-template-columns: 60px 1fr 150px 60px;
-  gap: 12px;
-  align-items: center;
-  background: #232733;
-  border-radius: 8px;
-  padding: 12px 16px;
-}
-
-.match-time {
-  text-align: right;
-}
-
-
-
-.win {
-  color: #4ade80;
-  font-weight: 700;
-}
-
-.loss {
-  color: #f87171;
-  font-weight: 700;
-}
-
-html {
-  background: #0f1117;
-}
-
-title {
-  color: #e8e8e8;
-  font-size: 24px;
-  font-weight: 700;
-  margin-bottom: 16px;
-}
-
-.type-stats {
-  display: flex;
-  gap: 16px;
-  margin-top: 16px;
+  align-items: stretch;
+  gap: 24px;
 }
 
 .type-panel {
-  flex: 1;
+  flex: 0 0 320px;
   background: #232733;
   border-radius: 10px;
   padding: 16px;
@@ -171,18 +202,67 @@ title {
   gap: 12px;
 }
 
-.content-row {
+.split-block {
+  margin-top: 32px;
+}
+
+.stats {
   display: flex;
-  gap: 16px;
-  margin-top: 16px;
-  align-items: flex-start;
+  gap: 24px;
+  margin-top: 28px;
+  margin-bottom: 24px;
 }
 
-.content-row .type-panel {
-  flex: 0 0 320px;
+
+
+.split-time {
+  display: inline-block;
+  width: 48px;
+  text-align: right;
 }
 
-.content-row .matches {
+.split-diff {
+  display: inline-block;
+  width: 72px;
+  text-align: right;
+  margin-left: 8px;
+}
+
+.matches {
   flex: 1;
-  margin-top: 0;
+  min-width: 0;
+}
+
+.match-row {
+  display: grid;
+  grid-template-columns: 50px 1fr 120px 60px;
+  padding: 8px 12px;
+  background: transparent;
+  border-radius: 0;
+  border-bottom: 1px solid #2a2e3a;
+}
+
+.match-row:hover {
+  background: #2a2e3a;
+}
+
+.match-time {
+  text-align: right;
+}
+
+.match-opponent {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.win {
+  color: #4ade80;
+  font-weight: 700;
+}
+
+.loss {
+  color: #f87171;
+  font-weight: 700;
 }
