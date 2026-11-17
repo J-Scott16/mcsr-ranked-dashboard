@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
-import { db } from './db';
+import { db } from './db.js';
+
 
 const MCSR_API = 'https://api.mcsrranked.com';
 

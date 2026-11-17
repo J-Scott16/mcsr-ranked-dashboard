@@ -1,5 +1,6 @@
-import app from './app';
-import { initDb } from './db';
+import app from './app.js';
+import { initDb } from './db.js';
+
 
 
 let dbReady: Promise<void> | null = null;
