@@ -188,6 +188,25 @@ button:hover {
   padding: 16px;
 }
 
+.elo-chart {
+  margin-top: 24px;
+  background: #232733;
+  border-radius: 10px;
+  padding: 16px;
+}
+
+
+
+
+.elo-chart h3 {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: #8a8fa3;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+
 .type-panel h3 {
   margin: 0 0 12px 0;
   font-size: 14px;
@@ -228,6 +247,12 @@ button:hover {
   margin-left: 8px;
 }
 
+.match-age {
+  text-align: right;
+  color: #8a8fa3;
+  font-size: 13px;
+}
+
 .matches {
   flex: 1;
   min-width: 0;
@@ -235,7 +260,7 @@ button:hover {
 
 .match-row {
   display: grid;
-  grid-template-columns: 50px 1fr 120px 60px;
+  grid-template-columns: 50px 1fr 120px 60px 45px;
   padding: 8px 12px;
   background: transparent;
   border-radius: 0;

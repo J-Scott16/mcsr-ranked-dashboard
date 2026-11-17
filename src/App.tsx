@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import "./App.css";
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from 'recharts';
+
 
 
 
@@ -15,10 +17,11 @@ type Match = {
   players: { uuid: string; nickname: string }[];
   result: { uuid: string; time: number } | null;
   forfeited: boolean;
-  changes: { uuid: string; change: number }[];
   seedType: string;
   bastionType: string | null;
   decayed: boolean;
+  changes: { uuid: string; change: number | null; eloRate: number | null }[];
+
 
 
 };
@@ -38,6 +41,14 @@ type MatchSplits = {
   oppBastionMs: number | null;
 };
 
+function rankColor(elo: number): string {
+  if (elo >= 2000) return '#a855f7'; // Netherite
+  if (elo >= 1500) return '#38bdf8'; // Diamond
+  if (elo >= 1200) return '#22c55e'; // Emerald
+  if (elo >= 900) return '#facc15';  // Gold
+  if (elo >= 600) return '#d1d5db';  // Iron
+  return '#6b7280'; // Coal
+}
 
 
 function formatTime(ms: number): string {
@@ -66,6 +77,74 @@ function median(values: number[]): number | null {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+function EloTooltip({ active, payload }: any) {
+  if (!active || !payload || payload.length === 0) return null;
+  const point = payload[0].payload;
+  return (
+    <div style={{ background: '#1a1d27', border: '1px solid #2a2e3a', borderRadius: '8px', padding: '8px 12px', color: '#e8e8e8' }}>
+      <div style={{ fontWeight: 700 }}>{point.rank}</div>
+      <div style={{ color: '#8a8fa3', fontSize: 14 }}>Elo: {point.elo}</div>
+      <div style={{ color: '#8a8fa3', fontSize: 14 }}>
+        {point.ago === 'now' ? 'just now' : `${point.ago} ago`}
+      </div>
+    </div>
+  );
+}
+
+
+function timeAgo(dateSeconds: number): string {
+  const seconds = Math.floor(Date.now() / 1000) - dateSeconds;
+  if (seconds < 60) return 'now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo`;
+  const years = Math.floor(days / 365);
+  return `${years}y`;
+}
+
+
+type EloPoint = { match: number; elo: number; rank: string; ago: string };
+
+
+
+function buildEloHistory(matches: Match[], playerUuid: string): EloPoint[] {
+  const points: EloPoint[] = [];
+  // matches come back newest-first, so reverse to go oldest -> newest
+  const chronological = [...matches].reverse();
+  chronological.forEach((m, i) => {
+    const entry = m.changes?.find((c) => c.uuid === playerUuid);
+    const elo = entry?.eloRate;
+    if (elo == null) return; // placement match, no rating yet
+    points.push({ match: i + 1, elo, rank: eloToRank(elo), ago: timeAgo(m.date) });
+
+  });
+  return points;
+}
+
+function eloToRank(elo: number): string {
+  if (elo >= 2000) return 'Netherite';
+  if (elo >= 1800) return 'Diamond III';
+  if (elo >= 1650) return 'Diamond II';
+  if (elo >= 1500) return 'Diamond I';
+  if (elo >= 1400) return 'Emerald III';
+  if (elo >= 1300) return 'Emerald II';
+  if (elo >= 1200) return 'Emerald I';
+  if (elo >= 1100) return 'Gold III';
+  if (elo >= 1000) return 'Gold II';
+  if (elo >= 900) return 'Gold I';
+  if (elo >= 800) return 'Iron III';
+  if (elo >= 700) return 'Iron II';
+  if (elo >= 600) return 'Iron I';
+  if (elo >= 500) return 'Coal III';
+  if (elo >= 400) return 'Coal II';
+  return 'Coal I';
 }
 
 
@@ -140,6 +219,22 @@ async function fetchMatchSplits(matchId: number, playerUuid: string, opponentUui
 
 type SplitTotal = { totalMs: number; count: number; diffs: number[] };
 
+function eloGradientStops(min: number, max: number): { offset: string; color: string }[] {
+  if (max <= min) return [{ offset: '0%', color: rankColor(max) }, { offset: '100%', color: rankColor(max) }];
+  const thresholds = [2000, 1500, 1200, 900, 600];
+  const stops: { offset: string; color: string }[] = [];
+  let color = rankColor(max);
+  stops.push({ offset: '0%', color });
+  for (const t of thresholds) {
+    if (t <= min || t >= max) continue;
+    const pct = `${(((max - t) / (max - min)) * 100).toFixed(2)}%`;
+    stops.push({ offset: pct, color });
+    color = rankColor(t - 1);
+    stops.push({ offset: pct, color });
+  }
+  stops.push({ offset: '100%', color });
+  return stops;
+}
 
 
 const overworldKeys = ["buried_Treasure", "desert_Temple", "village", "ruined_Portal", "shipwreck"] as const;
@@ -276,6 +371,16 @@ export default function App() {
       )
     : {};
     
+const eloHistory = player && matches.length > 0 ? buildEloHistory(matches, player.uuid) : [];
+const elos = eloHistory.map((p) => p.elo);
+const dataMin = elos.length ? Math.min(...elos) : 0;
+const dataMax = elos.length ? Math.max(...elos) : 0;
+const lowTick = Math.floor(dataMin / 100) * 100;
+const highTick = Math.ceil(dataMax / 100) * 100;
+const yTicks: number[] = [];
+for (let t = lowTick; t <= highTick; t += 100) yTicks.push(t);
+const gradientStops = eloHistory.length > 0 ? eloGradientStops(dataMin, dataMax) : [];
+
 
 
   function loadPlayer(name: string) {
@@ -386,7 +491,7 @@ return (
             </div>
           </div>
 
-                    <div className="content-row">
+          <div className="content-row">
             <div className="type-panel">
               <h3>Seed Types</h3>
               {Object.entries(seedStats).map(([name, s]) => (
@@ -439,6 +544,7 @@ return (
                     <span className="match-opponent">vs {opponent?.nickname}</span>
                     <span>{formatSeedType(match.seedType)}</span>
                     <span className="match-time">{timeLabel}</span>
+                    <span className="match-age">{timeAgo(match.date)}</span>
                   </div>
                 );
               })}
@@ -476,6 +582,29 @@ return (
               )}
             </div>
           </div>
+
+          {eloHistory.length > 0 && (
+            <div className="elo-chart">
+              <h3>Elo History</h3>
+              <ResponsiveContainer width="100%" height={250}>
+                <LineChart data={eloHistory}>
+                  <defs>
+                    <linearGradient id="eloLine" x1="0" y1="0" x2="0" y2="1">
+                      {gradientStops.map((s, i) => (
+                        <stop key={i} offset={s.offset} stopColor={s.color} />
+                      ))}
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="#2a2e3a" />
+                  <XAxis dataKey="match" stroke="#8a8fa3" tick={{ fontSize: 12 }} />
+                  <YAxis domain={[lowTick, highTick]} ticks={yTicks} stroke="#8a8fa3" tick={{ fontSize: 12 }} />
+                  <Tooltip content={<EloTooltip />} />
+                  <Line type="monotone" dataKey="elo" stroke="url(#eloLine)" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+
+            </div>
+          )}
         </div>
       )}
     </div>
