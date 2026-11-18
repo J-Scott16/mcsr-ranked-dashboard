@@ -1,14 +1,10 @@
 import { createClient } from '@libsql/client';
 
-// Local SQLite file for now. When we deploy, this url changes to the Turso database.
 export const db = createClient({
-  url: 'file:./data.db',
-});
-
-const client = createClient({
   url: process.env.TURSO_DATABASE_URL ?? 'file:./data.db',
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
+
 
 
 
