@@ -110,10 +110,11 @@ app.get('/api/player/:username', async (req, res) => {
     args: [player.uuid, player.nickname, player.eloRate, player.eloRank, now, JSON.stringify(player)],
   });
 
-  for (const m of ranked) {
+  await db.batch(
+  ranked.map((m) => {
     const opponent = m.players.find((p: any) => p.uuid !== player.uuid);
     const change = (m.changes ?? []).find((c: any) => c.uuid === player.uuid);
-    await db.execute({
+    return {
       sql: `INSERT OR REPLACE INTO matches
             (match_id, player_uuid, opponent_uuid, opponent_nickname, result, seed_type, bastion_type, date, forfeited, elo_change, elo_after, raw)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -131,8 +132,10 @@ app.get('/api/player/:username', async (req, res) => {
         change?.eloRate ?? null,
         JSON.stringify(m),
       ],
-    });
-  }
+    };
+  })
+);
+
 
   return res.json({ player, matches: ranked, cached: false });
 });
