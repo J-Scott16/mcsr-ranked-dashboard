@@ -111,30 +111,30 @@ app.get('/api/player/:username', async (req, res) => {
   });
 
   await db.batch(
-  ranked.map((m) => {
-    const opponent = m.players.find((p: any) => p.uuid !== player.uuid);
-    const change = (m.changes ?? []).find((c: any) => c.uuid === player.uuid);
-    return {
-      sql: `INSERT OR REPLACE INTO matches
-            (match_id, player_uuid, opponent_uuid, opponent_nickname, result, seed_type, bastion_type, date, forfeited, elo_change, elo_after, raw)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      args: [
-        m.id,
-        player.uuid,
-        opponent?.uuid ?? null,
-        opponent?.nickname ?? null,
-        m.result?.uuid ?? null,
-        m.seedType ?? null,
-        m.bastionType ?? null,
-        m.date,
-        m.forfeited ? 1 : 0,
-        change?.change ?? null,
-        change?.eloRate ?? null,
-        JSON.stringify(m),
-      ],
-    };
-  })
-);
+    ranked.map((m) => {
+      const opponent = m.players.find((p: any) => p.uuid !== player.uuid);
+      const change = (m.changes ?? []).find((c: any) => c.uuid === player.uuid);
+      return {
+        sql: `INSERT OR REPLACE INTO matches
+              (match_id, player_uuid, opponent_uuid, opponent_nickname, result, seed_type, bastion_type, date, forfeited, elo_change, elo_after, raw)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        args: [
+          m.id,
+          player.uuid,
+          opponent?.uuid ?? null,
+          opponent?.nickname ?? null,
+          m.result?.uuid ?? null,
+          m.seedType ?? null,
+          m.bastionType ?? null,
+          m.date,
+          m.forfeited ? 1 : 0,
+          change?.change ?? null,
+          change?.eloRate ?? null,
+          JSON.stringify(m),
+        ],
+      };
+    })
+  );
 
 
   return res.json({ player, matches: ranked, cached: false });

@@ -21,6 +21,82 @@ html {
   align-items: flex-start;
 }
 
+/* summary rises up when a match opens */
+.match-summary {
+  animation: rise-in 0.3s ease-out;
+}
+
+@keyframes rise-in {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.search-row {
+  animation: drop-in 0.3s ease-out;
+}
+
+@keyframes drop-in {
+  from {
+    transform: translateY(-12px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+
+/* back way: leaderboard and card slide back in from the left */
+.leaderboard {
+  animation: slide-in-left 0.3s ease-out;
+}
+
+.main-content .player-card {
+  animation: slide-in-left 0.3s ease-out;
+}
+
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-40px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+
+.detail-left .type-panel,
+.detail-left .elo-chart {
+  display: none;
+}
+
+.detail-left .card {
+  animation: slide-over 0.3s ease-out;
+}
+
+@keyframes slide-over {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+
+
+
 .leaderboard {
   flex: 0 0 320px;
   margin-left: 32px;
@@ -258,6 +334,40 @@ button:hover {
   min-width: 0;
 }
 
+.match-summary {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.match-subtitle {
+  text-align: center;
+  color: #8a8fa3;
+  margin: 0 0 24px 0;
+}
+
+.match-summary h3 {
+  margin: 28px 0 12px 0;
+  font-size: 14px;
+  color: #8a8fa3;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.split-header {
+  color: #8a8fa3;
+  font-size: 13px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #2a2e3a;
+  margin-bottom: 4px;
+}
+
+.match-deaths {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #2a2e3a;
+}
+
+
 .match-row {
   display: grid;
   grid-template-columns: 50px 1fr 120px 60px 45px;
@@ -265,6 +375,8 @@ button:hover {
   background: transparent;
   border-radius: 0;
   border-bottom: 1px solid #2a2e3a;
+  cursor: pointer;
+
 }
 
 .match-row:hover {

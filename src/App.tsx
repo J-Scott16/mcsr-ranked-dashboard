@@ -26,6 +26,12 @@ type Match = {
 
 };
 
+type MatchDetail = Match & {
+  timelines: { uuid: string; time: number; type: string }[];
+  vod: { uuid: string; url: string; startsAt: number }[];
+};
+
+
 type TypeStats = {
   played: number;
   wins: number;
@@ -173,19 +179,56 @@ function groupStats(
   return stats;
 }
 
+const MATCH_SPLITS = [
+  { type: "story.enter_the_nether", label: "Enter Nether" },
+  { type: "nether.find_bastion", label: "Find Bastion" },
+  { type: "nether.find_fortress", label: "Find Fortress" },
+  { type: "nether.obtain_blaze_rod", label: "Blaze Rod" },
+  { type: "projectelo.timeline.blind_travel", label: "Blind Travel" },
+  { type: "story.follow_ender_eye", label: "Follow Ender Eye" },
+  { type: "story.enter_the_end", label: "Enter End" },
+  { type: "projectelo.timeline.dragon_death", label: "Dragon Death" },
+];
+
+function timelineTime(
+  timelines: { uuid: string; time: number; type: string }[],
+  uuid: string,
+  type: string
+): number | null {
+  const times = timelines
+    .filter((t) => t.uuid === uuid && t.type === type)
+    .map((t) => t.time);
+  return times.length > 0 ? Math.min(...times) : null;
+}
+
+
+function countDeaths(
+  timelines: { uuid: string; time: number; type: string }[],
+  uuid: string
+): number {
+  return timelines.filter(
+    (t) => t.uuid === uuid && t.type === "projectelo.timeline.death_spawnpoint"
+  ).length;
+}
+
+function formatEloChange(change: number | null | undefined): string {
+  if (change == null) return "—";
+  return change >= 0 ? `+${change}` : `${change}`;
+}
+
+
 
 async function fetchMatchSplits(matchId: number, playerUuid: string, opponentUuid: string): Promise<MatchSplits> {
   const res = await fetch(`/api/matches/${matchId}`);
   const json = await res.json();
   const timelines = (json.data.timelines ?? []) as { uuid: string; time: number; type: string }[];
-  const mine = timelines.filter((t) => t.uuid === playerUuid);
-  const theirs = timelines.filter((t) => t.uuid === opponentUuid);
-  const myEnterNether = mine.find((t) => t.type === "story.enter_the_nether")?.time ?? null;
-  const oppEnterNether = theirs.find((t) => t.type === "story.enter_the_nether")?.time ?? null;
-  const myFindBastion = mine.find((t) => t.type === "nether.find_bastion")?.time ?? null;
-  const myFindFortress = mine.find((t) => t.type === "nether.find_fortress")?.time ?? null;
-  const oppFindBastion = theirs.find((t) => t.type === "nether.find_bastion")?.time ?? null;
-  const oppFindFortress = theirs.find((t) => t.type === "nether.find_fortress")?.time ?? null;
+  const myEnterNether = timelineTime(timelines, playerUuid, "story.enter_the_nether");
+  const oppEnterNether = timelineTime(timelines, opponentUuid, "story.enter_the_nether");
+  const myFindBastion = timelineTime(timelines, playerUuid, "nether.find_bastion");
+  const myFindFortress = timelineTime(timelines, playerUuid, "nether.find_fortress");
+  const oppFindBastion = timelineTime(timelines, opponentUuid, "nether.find_bastion");
+  const oppFindFortress = timelineTime(timelines, opponentUuid, "nether.find_fortress");
+
   return {
     matchId,
     myOverworldMs: myEnterNether,
@@ -325,6 +368,10 @@ async function fetchAllMatchSplits(matches: Match[], playerUuid: string): Promis
 export default function App() {
   const [player, setPlayer] = useState<Player | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
+  const [matchDetail, setMatchDetail] = useState<MatchDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
   const inputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const STEVE_HEAD = "https://minotar.net/avatar/MHF_Steve/100.png";
@@ -385,6 +432,8 @@ const gradientStops = eloHistory.length > 0 ? eloGradientStops(dataMin, dataMax)
   setPlayer(null);
   setMatches([]);
   setSplits(null);
+  setSelectedMatch(null);
+  setMatchDetail(null);
 
   try {
     const res = await fetch(`/api/player/${encodeURIComponent(name)}`);
@@ -402,45 +451,28 @@ const gradientStops = eloHistory.length > 0 ? eloGradientStops(dataMin, dataMax)
   }
 }
 
+async function openMatch(match: Match) {
+  setSelectedMatch(match);
+  setMatchDetail(null);
+  setDetailLoading(true);
+  try {
+    const res = await fetch(`/api/matches/${match.id}`);
+    const json = await res.json();
+    setMatchDetail(json.data as MatchDetail);
+  } catch {
+    setMatchDetail(null);
+  } finally {
+    setDetailLoading(false);
+  }
+}
 
-return (
-  <div className="container">
+function closeMatch() {
+  setSelectedMatch(null);
+  setMatchDetail(null);
+}
 
-    <div className="page-layout">
-      <div className="leaderboard">
-        <h3>Leaderboard</h3>
-        {leaderboard.length === 0 && <p>Loading...</p>}
-        {leaderboard.map((p) => (
-          <button
-            key={p.uuid}
-            className="leaderboard-row"
-            onClick={() => {
-              if (inputRef.current) inputRef.current.value = p.nickname;
-              loadPlayer(p.nickname);
-            }}
-          >
-            <span>#{p.eloRank} {p.nickname}</span>
-            <span>{p.eloRate}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="main-content">
-        <form
-      className="search-row"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const name = inputRef.current?.value.trim();
-        if (name) loadPlayer(name);
-      }}
-    >
-      <input ref={inputRef} placeholder="Search a player" />
-      <button type="submit">Search</button>
-    </form>
-        {error && <p>{error}</p>}
-        {loading && <p>Loading...</p>}
-        {player && (
-          <div className="card">
+const playerCard = player && (
+          <div className="card player-card">
             <h2 className="player-name">{player.nickname}</h2>
           <div className="player-head-row">
             <div className="head-stat">
@@ -531,7 +563,8 @@ return (
                     ? formatTime(match.result.time)
                     : "Draw";
                 return (
-                  <div key={match.id} className="match-row">
+                  <div key={match.id} className="match-row" onClick={() => openMatch(match)}>
+
                     <span className={won ? "win" : "loss"}>
                       {won ? "Win" : "Loss"}
                     </span>
@@ -543,6 +576,7 @@ return (
                 );
               })}
             </div>
+
 
             <div className="type-panel">
               <h3>Bastion Types</h3>
@@ -600,7 +634,166 @@ return (
             </div>
           )}
         </div>
+)
+
+const detailOpp = player && matchDetail
+  ? matchDetail.players.find((p) => p.uuid !== player.uuid)
+  : undefined;
+
+const myChange = player && matchDetail
+  ? matchDetail.changes.find((c) => c.uuid === player.uuid)
+  : undefined;
+
+const oppChange = player && matchDetail
+  ? matchDetail.changes.find((c) => c.uuid !== player.uuid)
+  : undefined;
+
+const myDeaths = matchDetail && player
+  ? countDeaths(matchDetail.timelines, player.uuid)
+  : 0;
+
+const oppDeaths = matchDetail && detailOpp
+  ? countDeaths(matchDetail.timelines, detailOpp.uuid)
+  : 0;
+
+
+const matchDisplay = (
+  <div className="card">
+    <button onClick={closeMatch}>← Back</button>
+    {detailLoading && <p>Loading match...</p>}
+    {matchDetail && selectedMatch && player && (
+      <div className="match-summary">
+        <h2 className="player-name">
+          {player.nickname} vs {detailOpp?.nickname}
+        </h2>
+
+        <p className="match-subtitle">
+          <span className={!matchDetail.result ? "" : matchDetail.result.uuid === player.uuid ? "win" : "loss"}>
+            {!matchDetail.result ? "Draw" : matchDetail.result.uuid === player.uuid ? "Win" : "Loss"}
+          </span>
+          {" · "}
+          {matchDetail.forfeited ? "Forfeit" : matchDetail.result ? formatTime(matchDetail.result.time) : "—"}
+          {" · "}
+          {formatSeedType(matchDetail.seedType)}
+          {matchDetail.bastionType ? ` · ${formatSeedType(matchDetail.bastionType)}` : ""}
+          {" · "}
+          {timeAgo(matchDetail.date)}
+        </p>
+
+        <div className="type-row">
+          <span>{player.nickname} Elo</span>
+          <span className={myChange?.change != null && myChange.change >= 0 ? "win" : "loss"}>
+            {formatEloChange(myChange?.change)}
+          </span>
+        </div>
+
+        <div className="type-row">
+          <span>{detailOpp?.nickname} Elo</span>
+          <span className={oppChange?.change != null && oppChange.change >= 0 ? "win" : "loss"}>
+            {formatEloChange(oppChange?.change)}
+          </span>
+        </div>
+
+        <h3>Splits</h3>
+        <div className="type-row split-header">
+          <span />
+          <span>
+            <span className="split-time">You</span>
+            <span className="split-time">Opp</span>
+            <span className="split-diff">Diff</span>
+          </span>
+        </div>
+        {MATCH_SPLITS.map((s) => {
+          const myTime = timelineTime(matchDetail.timelines, player.uuid, s.type);
+          const oppTime = detailOpp ? timelineTime(matchDetail.timelines, detailOpp.uuid, s.type) : null;
+          const diff = myTime !== null && oppTime !== null ? myTime - oppTime : null;
+          return (
+            <div key={s.type} className="type-row">
+              <span>{s.label}</span>
+              <span>
+                <span className="split-time">{myTime !== null ? formatTime(myTime) : "—"}</span>
+                <span className="split-time">{oppTime !== null ? formatTime(oppTime) : "—"}</span>
+                <span className={`split-diff ${diff === null ? "" : diff <= 0 ? "win" : "loss"}`}>
+                  {diff !== null ? formatDiff(diff) : "—"}
+                </span>
+
+              </span>
+            </div>
+          );
+        })}
+
+        <div className="type-row match-deaths">
+          <span>Deaths</span>
+          <span>
+            {player.nickname} {myDeaths} · {detailOpp?.nickname} {oppDeaths}
+          </span>
+        </div>
+
+        {matchDetail.vod.length > 0 && (
+          <>
+            <h3>VODs</h3>
+            {matchDetail.vod.map((v) => {
+              const vodPlayer = matchDetail.players.find((p) => p.uuid === v.uuid);
+              return (
+                <div key={v.uuid}>
+                  <a href={v.url} target="_blank" rel="noreferrer">
+                    Watch {vodPlayer?.nickname ?? "player"}'s VOD
+                  </a>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
+    )}
+  </div>
+);
+
+
+
+
+
+return (
+  <div className="container">
+
+    <div className="page-layout">
+      {selectedMatch ? (
+        <div className="detail-left">{playerCard}</div>
+      ) : (
+        <div className="leaderboard">
+          <h3>Leaderboard</h3>
+          {leaderboard.length === 0 && <p>Loading...</p>}
+          {leaderboard.map((p) => (
+            <button
+              key={p.uuid}
+              className="leaderboard-row"
+              onClick={() => {
+                if (inputRef.current) inputRef.current.value = p.nickname;
+                loadPlayer(p.nickname);
+              }}
+            >
+              <span>#{p.eloRank} {p.nickname}</span>
+              <span>{p.eloRate}</span>
+            </button>
+          ))}
+        </div>
       )}
+
+      <div className="main-content">
+        <form
+      className="search-row"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const name = inputRef.current?.value.trim();
+        if (name) loadPlayer(name);
+      }}
+    >
+      <input ref={inputRef} placeholder="Search a player" />
+      <button type="submit">Search</button>
+    </form>
+        {error && <p>{error}</p>}
+        {loading && <p>Loading...</p>}
+        {selectedMatch ? matchDisplay : playerCard}
     </div>
   </div>
 </div>
